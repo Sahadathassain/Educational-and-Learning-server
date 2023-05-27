@@ -52,6 +52,35 @@ async function run() {
       }
     });
 
+
+    // DELETE route to delete a toy by ID
+    let myToysData = [
+        // Sample toy objects
+        { _id: '1', toyName: 'Toy 1', subCategory: 'Category 1', price: 10, availableQuantity: 5, sellerName: 'Seller 1' },
+        { _id: '2', toyName: 'Toy 2', subCategory: 'Category 2', price: 20, availableQuantity: 3, sellerName: 'Seller 2' },
+        { _id: '3', toyName: 'Toy 3', subCategory: 'Category 1', price: 15, availableQuantity: 8, sellerName: 'Seller 1' }
+      ];
+
+      app.delete('/myToys/:id', async (req, res) => {
+        try {
+          const id = req.params.id;
+          const query = { _id: new ObjectId(id) };
+      
+          const result = await EducationCollection.deleteOne(query);
+          if (result.deletedCount === 1) {
+            res.sendStatus(200); // Send a success status code
+          } else {
+            res.sendStatus(404); // Send a not found status code
+          }
+        } catch (error) {
+          console.error('Error deleting document:', error);
+          res.status(500).send('Internal Server Error');
+        }
+      });
+      
+
+
+
     app.get('/myToys/:email', async (req, res) => {
       const { sort } = req.query;
       const query = { sellerEmail: req.params.email };
