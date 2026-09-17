@@ -1,181 +1,812 @@
-const express = require('express');
-const cors = require('cors');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const express = require("express");
+const cors = require("cors");
+const {
+  MongoClient,
+  ServerApiVersion,
+  ObjectId,
+} = require("mongodb");
 
+require("dotenv").config();
 
-require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors());
+// =====================================================
+// MIDDLEWARE
+// =====================================================
+
+app.use(
+  cors({
+    origin: "*",
+    methods: [
+      "GET",
+      "POST",
+      "PATCH",
+      "PUT",
+      "DELETE",
+      "OPTIONS",
+    ],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.vwsamp9.mongodb.net/?retryWrites=true&w=majority`;
+// =====================================================
+// MONGODB CONNECTION
+// =====================================================
+
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.3qljnif.mongodb.net/?appName=Cluster0`;
 
 const client = new MongoClient(uri, {
-    serverApi: {
-        version: ServerApiVersion.v1,
-        strict: true,
-        deprecationErrors: true,
-    },
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
 });
+
+// =====================================================
+// HELPER FUNCTIONS
+// =====================================================
+
+const isValidObjectId = (id) => {
+  return ObjectId.isValid(id);
+};
+
+const escapeRegex = (text) => {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+// =====================================================
+// DATABASE
+// =====================================================
 
 async function run() {
-    try {
-         client.connect();
-        const db = client.db('Education');
-        const EducationCollection = db.collection('educations');
-        console.log('Database connected');
+  try {
+    // ---------------------------------------------------
+    // CONNECT DATABASE
+    // ---------------------------------------------------
 
-        app.post('/Data', async (req, res) => {
-            const body = req.body;
-            body.price = parseFloat(body.price);
+    await client.connect();
 
-            const result = await EducationCollection.insertOne(body);
-            console.log(result);
-            res.send(result);
+    const db = client.db("Education");
+
+    const EducationCollection =
+      db.collection("educations");
+
+    // ---------------------------------------------------
+    // DATABASE PING
+    // ---------------------------------------------------
+
+    await client.db("admin").command({
+      ping: 1,
+    });
+
+    console.log(
+      "MongoDB deployment ping successful"
+    );
+
+    console.log(
+      "Database connected successfully"
+    );
+
+    // ===================================================
+    // ROOT ROUTE
+    // ===================================================
+
+    app.get("/", (req, res) => {
+      res.status(200).send(
+        "Educational & Learning API is running"
+      );
+    });
+
+    // ===================================================
+    // CREATE DATA
+    // ===================================================
+
+    app.post("/Data", async (req, res) => {
+      try {
+        const body = {
+          ...req.body,
+        };
+
+        // -------------------------------
+        // Validate required fields
+        // -------------------------------
+
+        if (!body.toyName) {
+          return res.status(400).json({
+            message: "Toy name is required",
+          });
+        }
+
+        if (!body.sellerEmail) {
+          return res.status(400).json({
+            message: "Seller email is required",
+          });
+        }
+
+        // -------------------------------
+        // Convert numeric values
+        // -------------------------------
+
+        const price = Number(body.price);
+
+        const toyRating = Number(
+          body.toyRating
+        );
+
+        const availableQuantity = Number(
+          body.availableQuantity
+        );
+
+        if (Number.isNaN(price)) {
+          return res.status(400).json({
+            message: "Price must be a valid number",
+          });
+        }
+
+        if (
+          body.toyRating !== undefined &&
+          Number.isNaN(toyRating)
+        ) {
+          return res.status(400).json({
+            message:
+              "Toy rating must be a valid number",
+          });
+        }
+
+        if (
+          body.availableQuantity !== undefined &&
+          Number.isNaN(availableQuantity)
+        ) {
+          return res.status(400).json({
+            message:
+              "Available quantity must be a valid number",
+          });
+        }
+
+        body.price = price;
+
+        if (body.toyRating !== undefined) {
+          body.toyRating = toyRating;
+        }
+
+        if (
+          body.availableQuantity !== undefined
+        ) {
+          body.availableQuantity =
+            availableQuantity;
+        }
+
+        body.createdAt = new Date();
+
+        // -------------------------------
+        // Insert
+        // -------------------------------
+
+        const result =
+          await EducationCollection.insertOne(
+            body
+          );
+
+        res.status(201).json({
+          message: "Data created successfully",
+          status: true,
+          insertedId: result.insertedId,
         });
+      } catch (error) {
+        console.error(
+          "Failed to create data:",
+          error
+        );
 
-        app.get('/allData', async (req, res) => {
-            const result = await EducationCollection.find({}).toArray();
-            res.send(result);
+        res.status(500).json({
+          message: "Failed to create data",
+          status: false,
         });
+      }
+    });
 
-        app.get('/allData/:id', async (req, res) => {
-            try {
-                const id = req.params.id;
-                const query = { _id: new ObjectId(id) };
-                const result = await EducationCollection.findOne(query);
-                res.send(result);
-            } catch (error) {
-                console.error('Error retrieving document:', error);
-                res.status(500).send('Internal Server Error');
-            }
+    // ===================================================
+    // GET ALL DATA
+    // ===================================================
+
+    app.get("/allData", async (req, res) => {
+      try {
+        const result =
+          await EducationCollection.find({})
+            .sort({
+              createdAt: -1,
+            })
+            .toArray();
+
+        res.status(200).json(result);
+      } catch (error) {
+        console.error(
+          "Failed to fetch all data:",
+          error
+        );
+
+        res.status(500).json({
+          message: "Failed to fetch data",
         });
+      }
+    });
 
-        app.get("/alltoyByText/:text", async (req, res) => {
-            const text = req.params.text;
-            const result = await EducationCollection
-              .find({
-                $or: [
-                  { toyName: { $regex: text, $options: "i" } },
-                  {sellerName: { $regex: text, $options: "i" } },
-                ],
+    // ===================================================
+    // GET SINGLE DATA
+    // ===================================================
+
+    app.get(
+      "/allData/:id",
+      async (req, res) => {
+        try {
+          const { id } = req.params;
+
+          // -------------------------------
+          // Validate ID
+          // -------------------------------
+
+          if (!isValidObjectId(id)) {
+            return res.status(400).json({
+              message: "Invalid ID",
+            });
+          }
+
+          const query = {
+            _id: new ObjectId(id),
+          };
+
+          const result =
+            await EducationCollection.findOne(
+              query
+            );
+
+          if (!result) {
+            return res.status(404).json({
+              message: "Data not found",
+            });
+          }
+
+          res.status(200).json(result);
+        } catch (error) {
+          console.error(
+            "Error retrieving document:",
+            error
+          );
+
+          res.status(500).json({
+            message: "Internal Server Error",
+          });
+        }
+      }
+    );
+
+    // ===================================================
+    // SEARCH BY TEXT
+    // ===================================================
+
+    app.get(
+      "/alltoyByText/:text",
+      async (req, res) => {
+        try {
+          const text = req.params.text || "";
+
+          if (!text.trim()) {
+            return res.status(200).json([]);
+          }
+
+          const safeText =
+            escapeRegex(text.trim());
+
+          const result =
+            await EducationCollection.find({
+              $or: [
+                {
+                  toyName: {
+                    $regex: safeText,
+                    $options: "i",
+                  },
+                },
+                {
+                  sellerName: {
+                    $regex: safeText,
+                    $options: "i",
+                  },
+                },
+                {
+                  subCategory: {
+                    $regex: safeText,
+                    $options: "i",
+                  },
+                },
+              ],
+            })
+              .sort({
+                createdAt: -1,
               })
               .toArray();
-            res.send(result);
+
+          res.status(200).json(result);
+        } catch (error) {
+          console.error(
+            "Search failed:",
+            error
+          );
+
+          res.status(500).json({
+            message: "Search failed",
           });
+        }
+      }
+    );
 
+    // ===================================================
+    // GET MY TOYS
+    // ===================================================
 
-        // DELETE route to delete a toy by ID
-        let myToysData = [
-            // Sample toy objects
-            { _id: '1', toyName: 'Toy 1', subCategory: 'Category 1', price: 10, availableQuantity: 5, sellerName: 'Seller 1' },
-            { _id: '2', toyName: 'Toy 2', subCategory: 'Category 2', price: 20, availableQuantity: 3, sellerName: 'Seller 2' },
-            { _id: '3', toyName: 'Toy 3', subCategory: 'Category 1', price: 15, availableQuantity: 8, sellerName: 'Seller 1' }
-        ];
+    app.get(
+      "/myToys/:email",
+      async (req, res) => {
+        try {
+          const email = decodeURIComponent(
+            req.params.email
+          );
 
-        app.delete('/myToys/:id', async (req, res) => {
-            try {
-                const id = req.params.id;
-                const query = { _id: new ObjectId(id) };
+          const { sort } = req.query;
 
-                const result = await EducationCollection.deleteOne(query);
-                if (result.deletedCount === 1) {
-                    res.sendStatus(200); // Send a success status code
-                } else {
-                    res.sendStatus(404); // Send a not found status code
-                }
-            } catch (error) {
-                console.error('Error deleting document:', error);
-                res.status(500).send('Internal Server Error');
-            }
-        });
+          // -------------------------------
+          // Validate email
+          // -------------------------------
 
+          if (!email) {
+            return res.status(400).json({
+              message: "Email is required",
+            });
+          }
 
-        app.patch("/updateToy/:id", async (req, res) => {
-            const id = req.params.id;
-            const { price, toyRating, availableQuantity } = req.body;
-          
-            try {
-              const filter = { _id: new ObjectId(id) };
-              const updateDoc = {
-                $set: {
-                    price: parseFloat(price),
-                    toyRating: parseFloat(toyRating),
-                    availableQuantity: parseInt(availableQuantity),
-                 
-                },
-              };
-          
-              // Perform the update operation on your database
-              await EducationCollection.updateOne(filter, updateDoc);
-          
-              res.status(200).json({ message: "Toy updated successfully" });
-            } catch (error) {
-              res.status(500).json({ message: "Failed to update toy" });
-            }
+          const query = {
+            sellerEmail: email,
+          };
+
+          // -------------------------------
+          // Sort
+          // -------------------------------
+
+          let sortOption = {
+            createdAt: -1,
+          };
+
+          if (sort === "asc") {
+            sortOption = {
+              price: 1,
+              _id: 1,
+            };
+          }
+
+          if (sort === "desc") {
+            sortOption = {
+              price: -1,
+              _id: -1,
+            };
+          }
+
+          // -------------------------------
+          // Fetch
+          // -------------------------------
+
+          const toys =
+            await EducationCollection.find(
+              query
+            )
+              .sort(sortOption)
+              .toArray();
+
+          res.status(200).json(toys);
+        } catch (error) {
+          console.error(
+            "Failed to fetch toy data:",
+            error
+          );
+
+          res.status(500).json({
+            message:
+              "Failed to fetch toy data",
           });
-          
-          
+        }
+      }
+    );
 
+    // ===================================================
+    // ADD TOY
+    // ===================================================
 
-       
+    app.post(
+      "/addtoy",
+      async (req, res) => {
+        try {
+          const toyData = {
+            ...req.body,
+          };
 
+          // -------------------------------
+          // Required fields
+          // -------------------------------
 
+          if (!toyData.toyName) {
+            return res.status(400).json({
+              message: "Toy name is required",
+              status: false,
+            });
+          }
 
-        app.get('/myToys/:email', async (req, res) => {
-            const { sort } = req.query;
-            const query = { sellerEmail: req.params.email };
-            let sortOption = {};
+          if (!toyData.sellerEmail) {
+            return res.status(400).json({
+              message:
+                "Seller email is required",
+              status: false,
+            });
+          }
 
-            if (sort === 'asc') {
-                sortOption = { price: 1, _id: 1 };
-            } else if (sort === 'desc') {
-                sortOption = { price: -1, _id: -1 };
-            }
+          // -------------------------------
+          // Numeric fields
+          // -------------------------------
 
-            try {
-                const toys = await EducationCollection.find(query).sort(sortOption).toArray();
-                res.send(toys);
-            } catch (error) {
-                console.error('Failed to fetch toy data:', error);
-                res.status(500).send('Failed to fetch toy data');
-            }
-        });
+          const price = Number(
+            toyData.price
+          );
 
-        app.post('/addtoy', async (req, res) => {
-            try {
-                const toyData = req.body;
-                toyData.createdAt = new Date();
-                toyData.price = parseFloat(toyData.price);
+          const rating = Number(
+            toyData.toyRating
+          );
 
-                const result = await EducationCollection.insertOne(toyData);
-                if (result?.insertedId) {
-                    res.status(200).json({ message: 'Toy added successfully', status: true });
-                } else {
-                    res.status(404).json({ message: 'Unable to add toy. Please try again later.', status: false });
-                }
-            } catch (error) {
-                console.error(error);
-                res.status(500).json({ error: 'Failed to add toy', status: false });
-            }
-        });
+          const quantity = Number(
+            toyData.availableQuantity
+          );
 
-        // await client.db('admin').command({ ping: 1 });
-        // console.log('Pinged your deployment. You successfully connected to MongoDB!');
-    } finally {
-        // Ensures that the client will close when you finish/error
-        // await client.close();
-    }
+          if (Number.isNaN(price)) {
+            return res.status(400).json({
+              message:
+                "Price must be a valid number",
+              status: false,
+            });
+          }
+
+          if (Number.isNaN(rating)) {
+            return res.status(400).json({
+              message:
+                "Rating must be a valid number",
+              status: false,
+            });
+          }
+
+          if (Number.isNaN(quantity)) {
+            return res.status(400).json({
+              message:
+                "Available quantity must be a valid number",
+              status: false,
+            });
+          }
+
+          // -------------------------------
+          // Assign normalized values
+          // -------------------------------
+
+          toyData.price = price;
+
+          toyData.toyRating = rating;
+
+          toyData.availableQuantity =
+            quantity;
+
+          toyData.createdAt = new Date();
+
+          // -------------------------------
+          // Insert
+          // -------------------------------
+
+          const result =
+            await EducationCollection.insertOne(
+              toyData
+            );
+
+          if (result?.insertedId) {
+            return res.status(201).json({
+              message:
+                "Toy added successfully",
+              status: true,
+              insertedId:
+                result.insertedId,
+            });
+          }
+
+          return res.status(400).json({
+            message:
+              "Unable to add toy. Please try again later.",
+            status: false,
+          });
+        } catch (error) {
+          console.error(
+            "Failed to add toy:",
+            error
+          );
+
+          res.status(500).json({
+            message: "Failed to add toy",
+            status: false,
+          });
+        }
+      }
+    );
+
+    // ===================================================
+    // UPDATE TOY
+    // ===================================================
+
+    app.patch(
+      "/updateToy/:id",
+      async (req, res) => {
+        try {
+          const { id } = req.params;
+
+          // -------------------------------
+          // Validate ID
+          // -------------------------------
+
+          if (!isValidObjectId(id)) {
+            return res.status(400).json({
+              message: "Invalid toy ID",
+            });
+          }
+
+          const {
+            price,
+            toyRating,
+            availableQuantity,
+          } = req.body;
+
+          // -------------------------------
+          // Validate values
+          // -------------------------------
+
+          const numericPrice =
+            Number(price);
+
+          const numericRating =
+            Number(toyRating);
+
+          const numericQuantity =
+            Number(availableQuantity);
+
+          if (Number.isNaN(numericPrice)) {
+            return res.status(400).json({
+              message:
+                "Price must be a valid number",
+            });
+          }
+
+          if (
+            Number.isNaN(numericRating)
+          ) {
+            return res.status(400).json({
+              message:
+                "Rating must be a valid number",
+            });
+          }
+
+          if (
+            Number.isNaN(numericQuantity)
+          ) {
+            return res.status(400).json({
+              message:
+                "Available quantity must be a valid number",
+            });
+          }
+
+          // -------------------------------
+          // Filter
+          // -------------------------------
+
+          const filter = {
+            _id: new ObjectId(id),
+          };
+
+          // -------------------------------
+          // Update document
+          // -------------------------------
+
+          const updateDoc = {
+            $set: {
+              price: numericPrice,
+
+              toyRating: numericRating,
+
+              availableQuantity:
+                numericQuantity,
+
+              updatedAt: new Date(),
+            },
+          };
+
+          // -------------------------------
+          // Update
+          // -------------------------------
+
+          const result =
+            await EducationCollection.updateOne(
+              filter,
+              updateDoc
+            );
+
+          // -------------------------------
+          // Not found
+          // -------------------------------
+
+          if (result.matchedCount === 0) {
+            return res.status(404).json({
+              message: "Toy not found",
+            });
+          }
+
+          // -------------------------------
+          // Success
+          // -------------------------------
+
+          res.status(200).json({
+            message:
+              "Toy updated successfully",
+            status: true,
+            modifiedCount:
+              result.modifiedCount,
+          });
+        } catch (error) {
+          console.error(
+            "Failed to update toy:",
+            error
+          );
+
+          res.status(500).json({
+            message:
+              "Failed to update toy",
+            status: false,
+          });
+        }
+      }
+    );
+
+    // ===================================================
+    // DELETE TOY
+    // ===================================================
+
+    app.delete(
+      "/myToys/:id",
+      async (req, res) => {
+        try {
+          const { id } = req.params;
+
+          // -------------------------------
+          // Validate ID
+          // -------------------------------
+
+          if (!isValidObjectId(id)) {
+            return res.status(400).json({
+              message:
+                "Invalid toy ID",
+            });
+          }
+
+          const query = {
+            _id: new ObjectId(id),
+          };
+
+          // -------------------------------
+          // Delete
+          // -------------------------------
+
+          const result =
+            await EducationCollection.deleteOne(
+              query
+            );
+
+          // -------------------------------
+          // Not found
+          // -------------------------------
+
+          if (result.deletedCount === 0) {
+            return res.status(404).json({
+              message:
+                "Toy not found",
+            });
+          }
+
+          // -------------------------------
+          // Success
+          // -------------------------------
+
+          res.status(200).json({
+            message:
+              "Toy deleted successfully",
+            status: true,
+          });
+        } catch (error) {
+          console.error(
+            "Error deleting document:",
+            error
+          );
+
+          res.status(500).json({
+            message:
+              "Internal Server Error",
+            status: false,
+          });
+        }
+      }
+    );
+
+    // ===================================================
+    // 404 ROUTE
+    // ===================================================
+
+    app.use((req, res) => {
+      res.status(404).json({
+        message: "Route not found",
+        path: req.originalUrl,
+      });
+    });
+
+    // ===================================================
+    // START SERVER
+    // ===================================================
+
+    app.listen(port, () => {
+      console.log(
+        `Educational & Learning server is running on port ${port}`
+      );
+    });
+  } catch (error) {
+    console.error(
+      "MongoDB connection failed:",
+      error
+    );
+
+    process.exit(1);
+  }
 }
 
-run().catch(console.div);
+// =====================================================
+// START APPLICATION
+// =====================================================
 
-app.get('/', (req, res) => {
-    res.send('SIMPLE CRUD IS RUNNING');
-});
+run();
 
-app.listen(port, () => {
-    console.log(`SIMPLE CRUD is running on port ${port}`);
-});
+// =====================================================
+// GRACEFUL SHUTDOWN
+// =====================================================
+
+process.on(
+  "SIGINT",
+  async () => {
+    await client.close();
+
+    console.log(
+      "MongoDB connection closed."
+    );
+
+    process.exit(0);
+  }
+);
+
+process.on(
+  "SIGTERM",
+  async () => {
+    await client.close();
+
+    console.log(
+      "MongoDB connection closed."
+    );
+
+    process.exit(0);
+  }
+);
